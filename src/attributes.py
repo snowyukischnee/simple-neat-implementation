@@ -68,7 +68,7 @@ class FloatAttr(BaseAttr):
             min_value = self.get_config_attr(config, 'min_value')
             max_value = self.get_config_attr(config, 'max_value')
             return clamp(random.gauss(mean, stdev), min_value, max_value)
-        elif init_type == 'uniform':
+        elif any(it in init_type for it in ['uniform', 'random']):
             min_value = self.get_config_attr(config, 'min_value')
             max_value = self.get_config_attr(config, 'max_value')
             return random.uniform(min_value, max_value)
@@ -91,11 +91,12 @@ class BoolAttr(BaseAttr):
     _config_items = {
         'init_type': [str, None],
         'default_value': [bool, True],
+        'mutation_type': [str, None],
         'mutation_rate': [float, None],
         'value_mutation_rate': [dict, {False: 0.5, True: 0.5}]  # the mutation rate has to be in order
     }
 
-    def init_value(self, config: object) -> Any:
+    def init_value(self, config: object) -> bool:
         init_type = self.get_config_attr(config, 'init_type', nullable=True)
         if init_type is None:
             default_value = self.get_config_attr(config, 'default_value')
@@ -104,14 +105,21 @@ class BoolAttr(BaseAttr):
             return random.random() < 0.5
         raise RuntimeError('{0}: init_type {1} not recognized'.format(self.__class__, init_type))
 
-    def mutate_value(self, value: bool, config: object) -> Any:
+    def mutate_value(self, value: bool, config: object) -> bool:
         value_mutation_rate = self.get_config_attr(config, 'value_mutation_rate')
         mutation_rate = self.get_config_attr(config, 'mutation_rate')
         if random.random() < mutation_rate:
-            probs_dict = without_keys(value_mutation_rate, [value])
-            for val, prob in probs_dict.items():
-                if random.random() < prob:
-                    return val
+            mutation_type = self.get_config_attr(config, 'mutation_type', nullable=True)
+            if mutation_type is None:
+                probs_dict = without_keys(value_mutation_rate, [value])
+                for val, prob in probs_dict.items():
+                    if random.random() < prob:
+                        return val
+                return value
+            elif any(mt in mutation_type for mt in ['uniform', 'random']):
+                return random.choice([key for key in value_mutation_rate.keys()])
+            else:
+                RuntimeError('{0}: mutation_type {1} not recognized'.format(self.__class__, mutation_type))
         return value
 
 
@@ -119,11 +127,12 @@ class StringAttr(BaseAttr):
     _config_items = {
         'init_type': [str, None],
         'default_value': [str, None],
+        'mutation_type': [str, None],
         'mutation_rate': [float, None],
         'value_mutation_rate': [dict, None]
     }
 
-    def init_value(self, config: object) -> Any:
+    def init_value(self, config: object) -> str:
         init_type = self.get_config_attr(config, 'init_type', nullable=True)
         if init_type is None:
             default_value = self.get_config_attr(config, 'default_value')
@@ -133,14 +142,21 @@ class StringAttr(BaseAttr):
             return random.choice([key for key in value_mutation_rate.keys()])
         raise RuntimeError('{0}: init_type {1} not recognized'.format(self.__class__, init_type))
 
-    def mutate_value(self, value: str, config: object) -> Any:
+    def mutate_value(self, value: str, config: object) -> str:
         value_mutation_rate = self.get_config_attr(config, 'value_mutation_rate')
         mutation_rate = self.get_config_attr(config, 'mutation_rate')
         if random.random() < mutation_rate:
-            probs_dict = without_keys(value_mutation_rate, [value])
-            for val, prob in probs_dict.items():
-                if random.random() < prob:
-                    return val
+            mutation_type = self.get_config_attr(config, 'mutation_type', nullable=True)
+            if mutation_type is None:
+                probs_dict = without_keys(value_mutation_rate, [value])
+                for val, prob in probs_dict.items():
+                    if random.random() < prob:
+                        return val
+                return value
+            elif any(mt in mutation_type for mt in ['uniform', 'random']):
+                return random.choice([key for key in value_mutation_rate.keys()])
+            else:
+                RuntimeError('{0}: mutation_type {1} not recognized'.format(self.__class__, mutation_type))
         return value
 
 
@@ -166,6 +182,7 @@ if __name__ == '__main__':
         'conn_init_type': None,
         'conn_default_value': False,
         'conn_mutation_rate': 0.6,
+        'conn_mutation_type': 'random',
         'conn_value_mutation_rate': {False: 0.1, True: 0.5}
     }
     from collections import namedtuple
@@ -176,7 +193,8 @@ if __name__ == '__main__':
     y = {
         'agg_init_type': 'random',
         'agg_default_value': 'dd',
-        'agg_mutation_rate': 0.6,
+        'agg_mutation_rate': 1.,
+        'agg_mutation_type': None,
         'agg_value_mutation_rate': {
             'test0': 0.1,
             'test1': 0.5,
