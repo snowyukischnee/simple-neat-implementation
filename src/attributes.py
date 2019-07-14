@@ -5,7 +5,7 @@ from utils import clamp
 
 class FloatAttr(BaseAttr):
     _config_items = {
-        'init_type': [str, 'gaussian'],
+        'init_type': [str, None],
         'default_value': [float, None],
         'min_value': [float, None],
         'max_value': [float, None],
@@ -17,30 +17,30 @@ class FloatAttr(BaseAttr):
     }
 
     def init_value(self, config: object) -> None:
-        init_type = getattr(config, self.init_type_name, self._config_items.get('init_type'))
+        init_type = self.get_config_attr(config, 'init_type', nullable=True)
         if init_type is None:
-            default_value = getattr(config, self.default_value_name)
+            default_value = self.get_config_attr(config, 'default_value')
             return default_value
         elif any(it in init_type for it in ['normal', 'gauss']):
-            mean = getattr(config, self.mean_name, self._config_items.get('mean'))
-            stdev = getattr(config, self.stdev_name, self._config_items.get('stdev'))
-            min_value = getattr(config, self.min_value_name, self._config_items.get('min_value'))
-            max_value = getattr(config, self.max_value_name, self._config_items.get('max_value'))
+            mean = self.get_config_attr(config, 'mean')
+            stdev = self.get_config_attr(config, 'stdev')
+            min_value = self.get_config_attr(config, 'min_value')
+            max_value = self.get_config_attr(config, 'max_value')
             return clamp(random.gauss(mean, stdev), min_value, max_value)
         elif init_type == 'uniform':
-            min_value = getattr(config, self.min_value_name, self._config_items.get('min_value'))
-            max_value = getattr(config, self.max_value_name, self._config_items.get('max_value'))
+            min_value = self.get_config_attr(config, 'min_value')
+            max_value = self.get_config_attr(config, 'max_value')
             return random.uniform(min_value, max_value)
-        raise RuntimeError('{}: init_type {} not recognized'.format(self.__class__, init_type))
+        raise RuntimeError('{0}: init_type {1} not recognized'.format(self.__class__, init_type))
 
 
 x = FloatAttr('weight', init_mean=43.435)
 y = {
     'weight_init_type': 'normal',
-    'weight_mean': 0,
-    'weight_stdev': 1,
-    'weight_max_value': 2,
-    'weight_min_value': -1
+    'weight_mean': 0.,
+    'weight_stdev': 1.,
+    'weight_max_value': 2.,
+    'weight_min_value': -1.
 }
 from collections import namedtuple
 yp = namedtuple('config', y.keys())(*y.values())
