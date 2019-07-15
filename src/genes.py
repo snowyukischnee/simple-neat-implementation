@@ -1,6 +1,7 @@
 import random
 from typing import Any, Tuple, List
 from abc import ABC, abstractmethod
+from collections import deque
 from attributes import FloatAttr, BoolAttr, StringAttr
 
 
@@ -43,24 +44,13 @@ class BaseGene(ABC):
 
 
 class BaseNeuron(ABC):
-    # 'inputs' contain the forward inputs
-    # 'gradient' contain the gradient wrt. all the attributes of this neuron
-    _grad_items = {
-        'inputs': [list, None],
-        'gradient': [dict, {}]
-    }
-
     @abstractmethod
-    def forward(self, inputs: List[float]) -> float:
+    def forward(self, config: object, inputs: List[float]) -> float:
         pass
 
     @abstractmethod
-    def backward(self, grad: float) -> List[float]:
+    def backward(self, config: object, grad: float) -> List[float]:
         pass
-
-    def clear_grads(self) -> None:
-        self._grad_items['inputs'][1] = None
-        self._grad_items['gradient'][1] = {}
 
 
 class DefaultNodeGene(BaseGene):
@@ -105,38 +95,62 @@ class DefaultConnectionGene(BaseGene):
 
 
 class NeuralNodeGene(DefaultNodeGene, BaseNeuron):
-    def forward(self, inputs: List[float]) -> float:
-        assert isinstance(inputs, self._grad_items['inputs'][0]), 'input must be {0}, not {1}'.format(self._grad_items['inputs'][0], type(inputs))
+    _grad_items_history_len = 4
+    _grad_items_history = deque(maxlen=_grad_items_history_len)
+
+    def forward(self, config: object, inputs: List[float]) -> float:
+        assert isinstance(inputs, list), 'input must be {0}, not {1}'.format(list, type(inputs))
         assert len(inputs) > 0, 'input length must not be 0'
-        self._grad_items['inputs'][1] = inputs
-        y = self.activation(self.response * self.aggregation(inputs) + self.bias)
+        _grad_items = {
+            'inputs': inputs,
+            'gradient': {}
+        }
+        activation_function_def = getattr(config, 'activation_function_def')
+        aggregation_function_def = getattr(config, 'aggregation_function_def')
+        activation_f = activation_function_def[self.activation]
+        aggregation_f = aggregation_function_def[self.aggregation]
+        y = activation_f.calc(self.response * aggregation_f.calc(inputs) + self.bias)
         return y
 
-    def backward(self, grad: float) -> List[float]:
+    def backward(self, config: object, grad: float) -> List[float]:
         # y = activation(response * aggregation(inputs) + self.bias)
         # dy/d_bias = activation.derivative(response * aggregation(inputs) + self.bias) * 1
         # dy/d_response = activation.derivative(response * aggregation(inputs) + self.bias) * aggregation(inputs)
         # dy/d_inputs =  activation.derivative(response * aggregation(inputs) + self.bias) * response * aggregation.derivative(inputs) * 1
-        inputs = self._grad_items['inputs'][1]
+        _grad_items = self._grad_items_history[-1]
+        inputs = _grad_items['inputs']
         assert inputs is not None and len(inputs) > 0
-        x = self.activation.derivative(self.response * self.aggregation(inputs) + self.bias)
-        self._grad_items['gradient'][1]['bias'] = x * grad
-        self._grad_items['gradient'][1]['response'] = x * self.aggregation(inputs) * grad
-        self._grad_items['gradient'][1]['inputs'] = x * self.response * self.aggregation.derivative(inputs) * grad
-        return self._grad_items['gradient'][1]['inputs']
+        _grad_items['gradient']['output'] = grad
+        activation_function_def = getattr(config, 'activation_function_def')
+        aggregation_function_def = getattr(config, 'aggregation_function_def')
+        activation_f = activation_function_def[self.activation]
+        aggregation_f = aggregation_function_def[self.aggregation]
+        x = activation_f.derivative(self.response * aggregation_f.calc(inputs) + self.bias)
+        _grad_items['gradient']['bias'] = x * grad
+        _grad_items['gradient']['response'] = x * aggregation_f.calc(inputs) * grad
+        _grad_items['gradient']['inputs'] = x * self.response * aggregation_f.derivative(inputs) * grad
+        return _grad_items['gradient']['inputs']
 
 
 class NeuralConnectionGene(DefaultConnectionGene, BaseNeuron):
+    _grad_items_history_len = 4
+    _grad_items_history = deque(maxlen=_grad_items_history_len)
+
     def forward(self, inputs: List[float]) -> float:
         # connection gene is 1-1 connection
-        assert isinstance(inputs, self._grad_items['inputs'][0]), 'input must be {0}, not {1}'.format(self._grad_items['inputs'][0], type(inputs))
+        assert isinstance(inputs, list), 'input must be {0}, not {1}'.format(list, type(inputs))
         assert len(inputs) > 0, 'input length must not be 0'
-        self._grad_items['inputs'][1] = inputs[0]
+        _grad_items = {
+            'inputs': inputs[0],
+            'gradient': {}
+        }
         y = self.weight * inputs[0]
         return y
 
     def backward(self, grad: float) -> List[float]:
         # y = w * input
         # dy/d_input = w
-        self._grad_items['gradient'][1]['inputs'] = self.weight * grad
-        return self._grad_items['gradient'][1]['inputs']
+        _grad_items = self._grad_items_history[-1]
+        _grad_items['gradient']['output'] = grad
+        _grad_items['gradient']['inputs'] = self.weight * grad
+        return _grad_items['gradient']['inputs']

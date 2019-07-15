@@ -1,5 +1,8 @@
 from typing import Any
 from genes import DefaultNodeGene, DefaultConnectionGene, NeuralNodeGene, NeuralConnectionGene
+import activation_functions
+import aggregation_functions
+import random
 
 
 class DefaultGenome(object):
@@ -60,17 +63,73 @@ class DefaultGenome(object):
         distance = node_distance + connection_distance
         return distance
 
+    def mutate(self, config: object) -> None:
+        add_node_mutation_prob = getattr(config, 'add_node_mutation_prob', 0.0)
+        del_node_mutation_prob = getattr(config, 'del_node_mutation_prob', 0.0)
+        add_connection_mutation_prob = getattr(config, 'add_connection_mutation_prob', 0.0)
+        del_connection_mutation_prob = getattr(config, 'del_connection_mutation_prob', 0.0)
+        if random.random() < add_node_mutation_prob:
+            self.mutate_add_node(config)
+        if random.random() < del_node_mutation_prob:
+            self.mutate_del_node(config)
+        if random.random() < add_connection_mutation_prob:
+            self.mutate_add_connection(config)
+        if random.random() < del_connection_mutation_prob:
+            self.mutate_del_connection(config)
+        for ng in self.nodes.values():
+            ng.mutate(config)
+        for cg in self.connections.values():
+            cg.mutate(config)
+
     def mutate_add_node(self, config: object) -> None:
-        pass
+        if len(self.connections) == 0:
+            return
+        conn_to_split = random.choice(list(self.connections.values()))
+        new_node_key = len(self.nodes)
+        nng = self.create_node(config, new_node_key)
+        self.nodes[new_node_key] = nng
+        conn_to_split.enabled = False
+        inode_key, onode_key = conn_to_split.key
+        new_connection_1 = self.create_connection(config, inode_key, new_node_key)
+        new_connection_1.weight = 1.0
+        new_connection_1.enabled = True
+        self.connections[new_connection_1.key] = new_connection_1
+        new_connection_2 = self.create_connection(config, new_node_key, onode_key)
+        new_connection_2.weight = conn_to_split.weight
+        new_connection_1.enabled = True
+        self.connections[new_connection_2.key] = new_connection_2
 
     def mutate_del_node(self, config: object) -> None:
-        pass
+        available_node_keys = [nk for nk in self.nodes.keys() if nk not in getattr(config, 'output_keys')]
+        if len(available_node_keys) == 0:
+            return
+        del_node_key = random.choice(available_node_keys)
+        # delete connection that connected to 'will be deleted' node
+        for ck, cg in self.connections.items():
+            if del_node_key in ck:
+                del self.connections[ck]
+        del self.nodes[del_node_key]
 
     def mutate_add_connection(self, config: object) -> None:
-        pass
+        available_onode_keys = list(self.nodes.keys())
+        available_inode_keys = list(set(available_onode_keys + getattr(config, 'input_keys')))
+        connection_inode = random.choice(available_inode_keys)
+        connection_onode = random.choice(available_onode_keys)
+        connection_key = (connection_inode, connection_onode)
+        if connection_key in self.connections:
+            return
+        if (connection_inode in getattr(config, 'output_keys')) and (connection_onode in getattr(config, 'output_keys')):
+            return
+        # STILL NOT UNDERSTAND, COMMENTED
+        # if config.feed_forward and creates_cycle(list(self.connections.keys()), connection_key):
+        #     return
+        ncg = self.create_connection(config, connection_inode, connection_onode)
+        self.connections[ncg.key] = ncg
 
     def mutate_del_connection(self, config: object) -> None:
-        pass
+        if len(self.connections) > 0:
+            del_connection_key = random.choice(list(self.connections.keys()))
+            del self.connections[del_connection_key]
 
     @staticmethod
     def create_node(config: object, key: int) -> Any:
@@ -94,8 +153,12 @@ if __name__ == '__main__':
         'compatibility_disjoint_coefficient': 1.0,
         'num_inputs': 2,
         'input_keys': [-1, -2],
-        'output_keys': [0, 1],
+        'output_keys': [0],
         'num_outputs': 1,
+        'add_node_mutation_prob': 0.99,
+        'del_node_mutation_prob': 0.1,
+        'add_connection_mutation_prob': 0.99,
+        'del_connection_mutation_prob': 0.1,
 
         'weight_init_type': 'normal',
         'weight_default_value': 0.0,
@@ -107,6 +170,109 @@ if __name__ == '__main__':
         'weight_mutation_rate': 0.6,
         'weight_replace_rate': 0.2,
 
+        'response_init_type': 'normal',
+        'response_default_value': 0.0,
+        'response_mean': 0.0,
+        'response_stdev': 1.0,
+        'response_max_value': 2.0,
+        'response_min_value': -2.0,
+        'response_mutation_power': 1.0,
+        'response_mutation_rate': 0.6,
+        'response_replace_rate': 0.2,
+
+        'bias_init_type': 'normal',
+        'bias_default_value': 0.0,
+        'bias_mean': 0.0,
+        'bias_stdev': 1.0,
+        'bias_max_value': 2.0,
+        'bias_min_value': -2.0,
+        'bias_mutation_power': 1.0,
+        'bias_mutation_rate': 0.6,
+        'bias_replace_rate': 0.2,
+
+        'activation_function_def': {
+            'sigmoid': activation_functions.SigmoidActivationFunction,
+            'tanh': activation_functions.TanhActivationFunction,
+            'relu': activation_functions.ReluActivationFunction,
+            'gauss': activation_functions.GaussianActivationFunction
+        },
+        'aggregation_function_def': {
+            'sum': aggregation_functions.SumAggregationFunction,
+            'mean': aggregation_functions.MeanAggregationFunction,
+            'product': aggregation_functions.ProductAggregationFunction
+        }
     }
     from collections import namedtuple
     yp = namedtuple('config', y.keys())(*y.values())
+
+    # class Config(object):
+    #     node_gene_type = NeuralNodeGene
+    #     connection_gene_type = NeuralConnectionGene
+    #     genome_type = DefaultGenome
+    #     compatibility_weight_coefficient = 1.0
+    #     compatibility_disjoint_coefficient = 1.0
+    #     num_inputs = 2
+    #     input_keys = [-1, -2]
+    #     output_keys = [0]
+    #     num_outputs = 1
+    #     add_node_mutation_prob = 0.99
+    #     del_node_mutation_prob = 0.1
+    #     add_connection_mutation_prob = 0.99
+    #     del_connection_mutation_prob = 0.1
+    #
+    #     weight_init_type = 'normal'
+    #     weight_default_value = 0.0
+    #     weight_mean = 0.0
+    #     weight_stdev = 1.0
+    #     weight_max_value = 2.0
+    #     weight_min_value = -2.0
+    #     weight_mutation_power = 1.0
+    #     weight_mutation_rate = 0.6
+    #     weight_replace_rate = 0.2
+    #
+    #     response_init_type = 'normal'
+    #     response_default_value = 0.0
+    #     response_mean = 0.0
+    #     response_stdev = 1.0
+    #     response_max_value = 2.0
+    #     response_min_value = -2.0
+    #     response_mutation_power = 1.0
+    #     response_mutation_rate = 0.6
+    #     response_replace_rate = 0.2
+    #
+    #     bias_init_type = 'normal'
+    #     bias_default_value = 0.0
+    #     bias_mean = 0.0
+    #     bias_stdev = 1.0
+    #     bias_max_value = 2.0
+    #     bias_min_value = -2.0
+    #     bias_mutation_power = 1.0
+    #     bias_mutation_rate = 0.6
+    #     bias_replace_rate = 0.2
+    #
+    #     activation_function_def = {
+    #         'sigmoid': activation_functions.SigmoidActivationFunction,
+    #         'tanh': activation_functions.TanhActivationFunction,
+    #         'relu': activation_functions.ReluActivationFunction,
+    #         'gauss': activation_functions.GaussianActivationFunction
+    #     }
+    #     aggregation_function_def = {
+    #         'sum': aggregation_functions.SumAggregationFunction,
+    #         'mean': aggregation_functions.MeanAggregationFunction,
+    #         'product': aggregation_functions.ProductAggregationFunction
+    #     }
+    # yp = Config()
+    x = DefaultGenome('test_genome')
+    x.configure_new(yp)
+    x.mutate_add_connection(yp)
+    x.mutate_add_connection(yp)
+    x.mutate_add_connection(yp)
+    x.mutate_add_node(yp)
+    x.mutate_add_node(yp)
+    ng = x.create_node(yp, 3)
+    x.nodes[ng.key] = ng
+    from utils import required_for_output
+    print(x.connections.keys(), x.nodes.keys())
+    print(required_for_output(yp.input_keys, yp.output_keys, list(x.connections.keys())))
+    xx = x.nodes.get(2)
+    print(xx.forward(yp, [1., 2., 4.]))
