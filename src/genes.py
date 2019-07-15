@@ -1,5 +1,5 @@
 import random
-from typing import Any, Tuple
+from typing import Any, Tuple, List
 from abc import ABC, abstractmethod
 from attributes import FloatAttr, BoolAttr, StringAttr
 
@@ -40,6 +40,27 @@ class BaseGene(ABC):
     @abstractmethod
     def distance(self, other) -> float:
         pass
+
+
+class BaseNeuron(ABC):
+    # 'inputs' contain the forward inputs
+    # 'gradient' contain the gradient wrt. all the attributes of this neuron
+    _grad_items = {
+        'inputs': [list, None],
+        'gradient': [dict, {}]
+    }
+
+    @abstractmethod
+    def forward(self, inputs: List[float]) -> float:
+        pass
+
+    @abstractmethod
+    def backward(self, grad: float) -> List[float]:
+        pass
+
+    def clear_grads(self) -> None:
+        self._grad_items['inputs'][1] = None
+        self._grad_items['gradient'][1] = {}
 
 
 class DefaultNodeGene(BaseGene):
@@ -83,8 +104,39 @@ class DefaultConnectionGene(BaseGene):
         return d
 
 
-if __name__ == '__main__':
-    x = DefaultNodeGene(111213)
-    print(x.key)
-    y = DefaultConnectionGene((11, 32))
-    print(y.key)
+class NeuralNodeGene(DefaultNodeGene, BaseNeuron):
+    def forward(self, inputs: List[float]) -> float:
+        assert isinstance(inputs, self._grad_items['inputs'][0]), 'input must be {0}, not {1}'.format(self._grad_items['inputs'][0], type(inputs))
+        assert len(inputs) > 0, 'input length must not be 0'
+        self._grad_items['inputs'][1] = inputs
+        y = self.activation(self.response * self.aggregation(inputs) + self.bias)
+        return y
+
+    def backward(self, grad: float) -> List[float]:
+        # y = activation(response * aggregation(inputs) + self.bias)
+        # dy/d_bias = activation.derivative(response * aggregation(inputs) + self.bias) * 1
+        # dy/d_response = activation.derivative(response * aggregation(inputs) + self.bias) * aggregation(inputs)
+        # dy/d_inputs =  activation.derivative(response * aggregation(inputs) + self.bias) * response * aggregation.derivative(inputs) * 1
+        inputs = self._grad_items['inputs'][1]
+        assert inputs is not None and len(inputs) > 0
+        x = self.activation.derivative(self.response * self.aggregation(inputs) + self.bias)
+        self._grad_items['gradient'][1]['bias'] = x * grad
+        self._grad_items['gradient'][1]['response'] = x * self.aggregation(inputs) * grad
+        self._grad_items['gradient'][1]['inputs'] = x * self.response * self.aggregation.derivative(inputs) * grad
+        return self._grad_items['gradient'][1]['inputs']
+
+
+class NeuralConnectionGene(DefaultConnectionGene, BaseNeuron):
+    def forward(self, inputs: List[float]) -> float:
+        # connection gene is 1-1 connection
+        assert isinstance(inputs, self._grad_items['inputs'][0]), 'input must be {0}, not {1}'.format(self._grad_items['inputs'][0], type(inputs))
+        assert len(inputs) > 0, 'input length must not be 0'
+        self._grad_items['inputs'][1] = inputs[0]
+        y = self.weight * inputs[0]
+        return y
+
+    def backward(self, grad: float) -> List[float]:
+        # y = w * input
+        # dy/d_input = w
+        self._grad_items['gradient'][1]['inputs'] = self.weight * grad
+        return self._grad_items['gradient'][1]['inputs']
