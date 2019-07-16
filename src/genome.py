@@ -1,5 +1,5 @@
-from typing import Any
-from genes import DefaultNodeGene, DefaultConnectionGene, NeuralNodeGene, NeuralConnectionGene
+from typing import Any, Dict, Tuple
+from genes import DefaultNodeGene, DefaultConnectionGene, NeuralNodeGene, NeuralConnectionGene, BaseGene
 import activation_functions
 import aggregation_functions
 import random
@@ -7,10 +7,10 @@ import random
 
 class DefaultGenome(object):
     def __init__(self, key: Any):
-        self.key = key
-        self.nodes = {}
-        self.connections = {}
-        self.fitness = None
+        self.key: Any = key
+        self.nodes: Dict[int, BaseGene] = {}
+        self.connections: Dict[Tuple[int, int], BaseGene] = {}
+        self.fitness: float = None
 
     def configure_new(self, config: object) -> None:
         for nk in getattr(config, 'output_keys'):
@@ -275,4 +275,8 @@ if __name__ == '__main__':
     print(x.connections.keys(), x.nodes.keys())
     print(required_for_output(yp.input_keys, yp.output_keys, list(x.connections.keys())))
     xx = x.nodes.get(2)
+    print(xx.activation, xx.aggregation, xx.response, xx.bias)
     print(xx.forward(yp, [1., 2., 4.]))
+    print(xx._grad_items_history)
+    print(xx.backward(yp, 3.))
+    print(xx._grad_items_history)

@@ -23,7 +23,7 @@ def required_for_output(input_keys: List[int], output_keys: List[int], connectio
         # print(layer_nodes)
         required_nodes = required_nodes.union(layer_nodes)
         required_w_input_keys = required_w_input_keys.union(layer_w_input_keys)
-    return required_nodes
+    return list(required_nodes)
 
 # def create_cycle(connections: List[Tuple[int, int]], test: Tuple[int, int]) -> bool:
 #     pass

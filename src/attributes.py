@@ -4,15 +4,13 @@ from abc import ABC, abstractmethod
 from utils import clamp, without_keys
 import copy
 
+
 class BaseAttr(ABC):
-    @property
-    @abstractmethod
-    def _config_items(self):
-        raise NotImplementedError
+    _config_items = {}
 
     def __init__(self, name: str, **default_dict):
         self.name = name
-        self._config_items = copy.copy(self.__class__._config_items)
+        self._config_items = copy.deepcopy(self.__class__._config_items)
         for attr_name, attr_default_val in default_dict.items():
             if attr_name in self._config_items:
                 self._config_items[attr_name] = [self._config_items[attr_name][0], attr_default_val]
